@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Secrets — the sandbox key is free to mint, but it is still a key.
+.env
+
+# Local agent state
+switchboard.db
+switchboard.db-wal
+switchboard.db-shm

@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Switchboard — live</title>
+<style>
+  /* Motion tokens. The built-in CSS easings are too weak to read as
+     intentional; these are the stronger variants. Durations stay under 300ms —
+     this is an ops console, so the personality should be crisp, not elegant. */
+  :root {
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+
+    --bg: #0a0b0d;
+    --panel: #111317;
+    --panel-2: #15181d;
+    --line: #1f242c;
+    --ink: #e7eaf0;
+    --ink-dim: #8b93a1;
+    --ink-faint: #5a6272;
+
+    --accent: #5eead4;
+    --page: #c084fc;
+    --learn: #fbbf24;
+    --ask: #60a5fa;
+
+    --radius: 10px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 14px/1.5 ui-sans-serif, -apple-system, "Segoe UI", Inter, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    padding: 28px clamp(16px, 4vw, 40px) 56px;
+  }
+
+  a { color: inherit; }
+
+  /* ---- header ---- */
+  header {
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+    padding-bottom: 20px; border-bottom: 1px solid var(--line); margin-bottom: 24px;
+  }
+  h1 { font-size: 17px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+  .tag { color: var(--ink-faint); font-size: 13px; }
+
+  .live {
+    margin-left: auto; display: inline-flex; align-items: center; gap: 7px;
+    font-size: 12px; color: var(--ink-dim);
+  }
+  .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+    box-shadow: 0 0 0 0 rgba(94,234,212,.55);
+    animation: pulse 2.4s var(--ease-in-out) infinite;
+  }
+  /* Ambient, never-ending, purely decorative — one of the few places a
+     keyframe is right, because nothing interrupts it. */
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(94,234,212,.5); }
+    70%  { box-shadow: 0 0 0 7px rgba(94,234,212,0); }
+    100% { box-shadow: 0 0 0 0 rgba(94,234,212,0); }
+  }
+  .dot.stale { background: #64748b; animation: none; }
+
+  /* ---- hero metric ---- */
+  .hero {
+    display: grid; grid-template-columns: auto 1fr; gap: 26px; align-items: center;
+    background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%);
+    border: 1px solid var(--line); border-radius: 14px;
+    padding: 22px 26px; margin-bottom: 22px;
+  }
+  .ring { position: relative; width: 104px; height: 104px; flex: none; }
+  .ring svg { transform: rotate(-90deg); }
+  .ring circle { fill: none; stroke-width: 8; stroke-linecap: round; }
+  .ring .track { stroke: #1c2128; }
+  .ring .value {
+    stroke: var(--accent);
+    /* Transition, not keyframes: the value retargets as new data streams in. */
+    transition: stroke-dashoffset 700ms var(--ease-in-out);
+  }
+  .ring b {
+    position: absolute; inset: 0; display: grid; place-items: center;
+    font-size: 23px; font-weight: 600; letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  .hero h2 { margin: 0 0 5px; font-size: 15px; font-weight: 600; }
+  .hero p { margin: 0; color: var(--ink-dim); font-size: 13px; max-width: 62ch; }
+
+  /* ---- stat row ---- */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 10px; margin-bottom: 22px; }
+  .stat {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 13px 15px;
+  }
+  .stat b {
+    display: block; font-size: 22px; font-weight: 600; letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums; margin-bottom: 2px;
+  }
+  .stat span { color: var(--ink-faint); font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; }
+
+  /* ---- layout ---- */
+  .grid { display: grid; grid-template-columns: 1.45fr 1fr; gap: 18px; align-items: start; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+  section {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; overflow: hidden;
+  }
+  section > h3 {
+    margin: 0; padding: 13px 16px; font-size: 12px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .06em; color: var(--ink-dim);
+    border-bottom: 1px solid var(--line);
+  }
+  .body { padding: 8px; max-height: 460px; overflow-y: auto; }
+  .empty { color: var(--ink-faint); padding: 22px 10px; text-align: center; font-size: 13px; }
+
+  /* ---- event feed ----
+     Transitions + @starting-style rather than keyframes: rows arrive in bursts,
+     and a keyframe restarts from zero when interrupted mid-flight. */
+  .row {
+    display: grid; grid-template-columns: 62px 1fr; gap: 11px;
+    padding: 9px 10px; border-radius: 8px;
+    opacity: 1; transform: translateY(0);
+    transition: opacity 260ms var(--ease-out), transform 260ms var(--ease-out);
+  }
+  @starting-style {
+    /* Never from scale(0)/nothing — a small offset reads as arriving, not conjured. */
+    .row { opacity: 0; transform: translateY(-7px); }
+  }
+  .row + .row { border-top: 1px solid #171b21; }
+
+  .kind {
+    font-size: 10.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+    padding-top: 2px; text-align: right; color: var(--ink-faint);
+  }
+  .k-ask   { color: var(--ask); }
+  .k-page  { color: var(--page); }
+  .k-learn { color: var(--learn); }
+  .k-done  { color: var(--accent); }
+
+  .row p { margin: 0; font-size: 13px; }
+  .row small { color: var(--ink-faint); font-size: 11.5px; }
+
+  /* ---- experts ---- */
+  .expert { padding: 11px 13px; border-radius: 8px; }
+  .expert + .expert { border-top: 1px solid #171b21; }
+  .expert .top { display: flex; align-items: baseline; gap: 8px; }
+  .expert b { font-weight: 600; }
+  .expert .ch {
+    font-size: 10.5px; color: var(--ink-faint); border: 1px solid var(--line);
+    padding: 1px 6px; border-radius: 999px; text-transform: uppercase; letter-spacing: .04em;
+  }
+  .expert .sk { color: var(--ink-faint); font-size: 12px; margin-top: 3px; }
+  .bar { height: 3px; background: #1c2128; border-radius: 999px; margin-top: 8px; overflow: hidden; }
+  .bar i {
+    display: block; height: 100%; background: var(--accent); border-radius: 999px;
+    transform-origin: left center;
+    transition: transform 450ms var(--ease-out);
+  }
+
+  /* ---- knowledge ---- */
+  .kn { padding: 10px 13px; border-radius: 8px; }
+  .kn + .kn { border-top: 1px solid #171b21; }
+  .kn p { margin: 0 0 3px; font-size: 13px; }
+  .kn small { color: var(--ink-faint); font-size: 11.5px; }
+  .reuse { color: var(--accent); }
+
+  /* Hover only where a real pointer exists — touch fires hover on tap. */
+  @media (hover: hover) and (pointer: fine) {
+    .row:hover, .expert:hover, .kn:hover { background: #14171c; }
+  }
+
+  /* Reduced motion: keep opacity (it aids comprehension), drop movement. */
+  @media (prefers-reduced-motion: reduce) {
+    * { transition-duration: 120ms !important; }
+    .dot { animation: none; }
+    @starting-style { .row { opacity: 0; transform: none; } }
+    .row { transition: opacity 120ms ease; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Switchboard</h1>
+  <span class="tag">pages humans, then replaces them</span>
+  <span class="live"><span class="dot" id="dot"></span><span id="livetext">connecting…</span></span>
+</header>
+
+<div class="hero">
+  <div class="ring">
+    <svg width="104" height="104">
+      <circle class="track" cx="52" cy="52" r="44"></circle>
+      <circle class="value" id="ring" cx="52" cy="52" r="44"
+              stroke-dasharray="276.5" stroke-dashoffset="276.5"></circle>
+    </svg>
+    <b id="rate">0%</b>
+  </div>
+  <div>
+    <h2>Deflection rate</h2>
+    <p>Share of questions answered from what a human already taught it. Every
+       answer is given by a person exactly once — after that the agent handles it
+       on any channel, and nobody gets interrupted again.</p>
+  </div>
+</div>
+
+<div class="stats" id="stats"></div>
+
+<div class="grid">
+  <section>
+    <h3>Live activity</h3>
+    <div class="body" id="feed"><div class="empty">Waiting for traffic…</div></div>
+  </section>
+
+  <div style="display:grid; gap:18px;">
+    <section>
+      <h3>Experts on call</h3>
+      <div class="body" id="experts"><div class="empty">No experts registered</div></div>
+    </section>
+    <section>
+      <h3>What it has learned</h3>
+      <div class="body" id="knowledge"><div class="empty">Nothing yet</div></div>
+    </section>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const CIRC = 2 * Math.PI * 44;
+const MAX_ROWS = 60;
+
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+const clip = (s, n = 96) => {
+  s = String(s ?? "");
+  return s.length > n ? s.slice(0, n - 1) + "…" : s;
+};
+
+/* Event log -> one human-readable line. Unknown kinds still render rather than
+   vanishing silently; a dashboard that hides events you did not anticipate is
+   worse than one that shows them plainly. */
+function describe(e) {
+  switch (e.kind) {
+    case "question.asked":
+      return { cls: "k-ask", label: "asked",
+               main: esc(clip(e.text)),
+               sub: `${esc(e.asker || "someone")} · ${esc(e.channel)}` };
+    case "page.sent":
+      return { cls: "k-page", label: "paged",
+               main: `Paged an expert on <b>${esc(e.channel)}</b>`,
+               sub: "waiting for a human" };
+    case "question.escalated":
+      return { cls: "k-page", label: "escalate",
+               main: `Escalated to <b>${esc(e.to)}</b>`,
+               sub: esc(e.channel) };
+    case "knowledge.learned":
+      return { cls: "k-learn", label: "learned",
+               main: esc(clip(e.question)),
+               sub: `taught by ${esc(e.taught_by || "an expert")} · never paged again` };
+    case "question.resolved":
+      return { cls: "k-done", label: e.status === "answered_from_memory" ? "memory" : "resolved",
+               main: e.status === "answered_from_memory"
+                 ? "Answered from memory — no human paged"
+                 : "Answer relayed back to the asker",
+               sub: "" };
+    case "channel.connected":
+      return { cls: "k-done", label: "channel",
+               main: `Connected <b>${esc(e.channel)}</b>`, sub: esc(e.address || "") };
+    case "expert.added":
+      return { cls: "", label: "expert",
+               main: `Registered <b>${esc(e.name)}</b>`,
+               sub: `${esc(e.channel)} · ${esc((e.skills || []).join(", "))}` };
+    case "page.status": {
+      // "Page updated" told the operator nothing. Say what actually happened.
+      const said = {
+        accepted:  ["k-page",  "accepted", "Expert accepted the page"],
+        declined:  ["k-page",  "declined", "Expert declined — passing it on"],
+        answered:  ["k-done",  "answered", "Expert answered"],
+        timed_out: ["k-page",  "timeout",  "No reply in time — escalating"],
+      }[e.status];
+      if (!said) return { cls: "", label: esc(e.status), main: "Page updated", sub: "" };
+      return { cls: said[0], label: said[1], main: said[2], sub: "" };
+    }
+    default:
+      return { cls: "", label: esc(e.kind), main: "", sub: "" };
+  }
+}
+
+const seen = new Set();
+function addEvent(e) {
+  if (seen.has(e.seq)) return;
+  seen.add(e.seq);
+
+  const feed = $("feed");
+  feed.querySelector(".empty")?.remove();
+
+  const d = describe(e);
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML =
+    `<div class="kind ${d.cls}">${d.label}</div>` +
+    `<div><p>${d.main}</p>${d.sub ? `<small>${d.sub}</small>` : ""}</div>`;
+
+  feed.prepend(row);
+  while (feed.children.length > MAX_ROWS) feed.lastElementChild.remove();
+}
+
+function renderStats(s) {
+  const pct = Math.round((s.deflection_rate || 0) * 100);
+  $("rate").textContent = pct + "%";
+  $("ring").style.strokeDashoffset = String(CIRC * (1 - (s.deflection_rate || 0)));
+
+  const cells = [
+    [s.questions_total, "questions"],
+    [s.deflected, "from memory"],
+    [s.human_resolved, "needed a human"],
+    [s.knowledge_items, "learned"],
+    [s.human_pages_avoided, "interruptions saved"],
+    [s.in_flight, "in flight"],
+  ];
+  $("stats").innerHTML = cells
+    .map(([v, l]) => `<div class="stat"><b>${v ?? 0}</b><span>${l}</span></div>`)
+    .join("");
+}
+
+function renderExperts(list) {
+  const el = $("experts");
+  if (!list.length) { el.innerHTML = `<div class="empty">No experts registered</div>`; return; }
+  // The bar tracks reliability, not share-of-load. Load share is uniform early on
+  // (everyone sits at one page each) so it renders as three identical full bars
+  // and reads as a bug. Reliability separates the person who answers from the
+  // person who declined, which is the thing an operator actually wants to see.
+  el.innerHTML = list.map(e => `
+    <div class="expert">
+      <div class="top"><b>${esc(e.name)}</b><span class="ch">${esc(e.channel)}</span></div>
+      <div class="sk">${esc(e.skills.join(" · "))}</div>
+      <div class="bar"><i style="transform:scaleX(${
+        (e.paged ? e.answered / e.paged : 0).toFixed(3)
+      })"></i></div>
+      <div class="sk">${
+        e.paged
+          ? `answered ${e.answered} of ${e.paged} page${e.paged === 1 ? "" : "s"}`
+          : "not yet paged"
+      }</div>
+    </div>`).join("");
+}
+
+function renderKnowledge(list) {
+  const el = $("knowledge");
+  if (!list.length) { el.innerHTML = `<div class="empty">Nothing yet</div>`; return; }
+  el.innerHTML = list.slice().reverse().map(k => `
+    <div class="kn">
+      <p>${esc(clip(k.question, 74))}</p>
+      <small>${esc(k.taught_by || "expert")}${
+        k.reuse ? ` · <span class="reuse">reused ${k.reuse}×</span>` : ""
+      }</small>
+    </div>`).join("");
+}
+
+function connect() {
+  const src = new EventSource("/api/stream");
+
+  src.addEventListener("event", (m) => addEvent(JSON.parse(m.data)));
+  src.addEventListener("state", (m) => {
+    const s = JSON.parse(m.data);
+    renderStats(s.stats);
+    renderExperts(s.experts);
+    renderKnowledge(s.knowledge);
+  });
+
+  src.onopen = () => {
+    $("dot").classList.remove("stale");
+    $("livetext").textContent = "live";
+  };
+  src.onerror = () => {
+    $("dot").classList.add("stale");
+    $("livetext").textContent = "reconnecting…";
+    // EventSource retries on its own; don't stack another loop on top of it.
+  };
+}
+
+fetch("/api/state").then(r => r.json()).then(s => {
+  renderStats(s.stats); renderExperts(s.experts); renderKnowledge(s.knowledge);
+}).catch(() => {});
+
+connect();
+</script>
+</body>
+</html>
