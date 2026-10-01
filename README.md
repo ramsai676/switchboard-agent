@@ -1,4 +1,19 @@
-# Switchboard
+<!-- header:start -->
+<p align="center">
+  <img src=".github/banner.png" alt="Switchboard: Routes a question to whoever knows, on their own channel, then learns the answer." width="100%">
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/-Python-1f2937?style=flat-square&logo=python&logoColor=white" alt="Python">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-3b82f6?style=flat-square" alt="MIT license"></a>
+  <img src="https://img.shields.io/badge/tests-included-22c55e?style=flat-square" alt="Tests included">
+</p>
+
+<p align="center">
+  <img src=".github/screenshot.png" alt="Switchboard screenshot" width="100%">
+</p>
+
+<!-- header:end -->
 
 **An agent that pages humans, then replaces them.**
 

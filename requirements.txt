@@ -1,5 +1,5 @@
 # Runtime — deliberately tiny. No vector DB, no ML stack, no build toolchain.
-caspian-sdk>=0.6.1
+caspian-sdk>=0.6.1,<1   # 1.x renamed the module; pin until ported
 httpx>=0.27
 
 # Dev
